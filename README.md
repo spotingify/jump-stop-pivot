@@ -70,7 +70,7 @@ Content-Type: application/json
 **Response `200`:**
 ```json
 {
-  "idToken": "YOUR_ID_TOKEN",
+	"idToken": "YOUR_ID_TOKEN",
   "refreshToken": "YOUR_REFRESH_TOKEN",
   "expiresIn": 3600
 }
