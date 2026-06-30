@@ -21,35 +21,26 @@ You exchange a `clientId` + `clientSecret` for the integration token. You use th
 
 ## Step 1 — Create a JSP Account and Register Your Integration
 
-You'll need a JSP account before you can register an integration.
+1. Sign up or log in at [jumpstoppivot.com](https://jumpstoppivot.com)
+2. Go to **Developer** in the navigation
+3. Enter your integration name and select the scopes your app needs
+4. Click **Register Integration**
 
-Once you have an account, call the register endpoint using your account's Firebase `idToken` as the Bearer token:
+Your `clientId` and `clientSecret` are displayed once immediately after registration. Copy them to your environment variables — the secret cannot be retrieved again.
 
-```http
-POST /v1/integrations
-Authorization: Bearer {your-jsp-account-idToken}
-Content-Type: application/json
-
-{
-  "name": "My App",
-  "scopes": ["read:leagues", "read:stats", "write:stats"]
-}
-```
-
-**Response `201`:**
-```json
-{
-  "id": "550e8400-e29b-41d4-a716-446655440000",
-  "clientId": "YOUR_CLIENT_ID",
-  "clientSecret": "YOUR_CLIENT_SECRET",
-  "name": "My App",
-  "scopes": ["read:leagues", "read:stats", "write:stats"],
-  "active": true,
-  "createdAt": "2026-06-30T10:00:00Z"
-}
-```
-
-> **Save `clientSecret` immediately.** It is shown once and never stored in plaintext. Treat it like a password — store it in an environment variable or a secrets manager.
+> **Available scopes:**
+> | Scope | What it grants |
+> |---|---|
+> | `read:leagues` | Read league data |
+> | `write:leagues` | Create and update leagues |
+> | `read:teams` | Read team data |
+> | `write:teams` | Create and update teams |
+> | `read:players` | Read player data |
+> | `write:players` | Create and update players |
+> | `read:games` | Read game data |
+> | `write:games` | Create and update games |
+> | `read:stats` | Read game stats |
+> | `write:stats` | Submit game stats |
 
 ---
 
