@@ -1,0 +1,554 @@
+{
+  "info": {
+    "name": "JSP Integrations",
+    "_postman_id": "jsp-integrations-v1",
+    "description": "Jump Stop Pivot — Integration API.\n\n**Setup:**\n1. Set `base_url` (default: http://localhost:8080)\n2. Set `user_id_token` to your own JSP Firebase idToken\n3. Run folder 1 to register, folder 2 to get a token, then use folders 3-6 with the integration token",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url",                  "value": "http://localhost:8080", "type": "string" },
+    { "key": "user_id_token",             "value": "",                      "type": "string", "description": "Your own JSP Firebase idToken (for management endpoints)" },
+    { "key": "client_id",                 "value": "",                      "type": "string", "description": "Auto-captured from Register Integration" },
+    { "key": "client_secret",             "value": "",                      "type": "string", "description": "Auto-captured from Register Integration (one-time only)" },
+    { "key": "integration_id",            "value": "",                      "type": "string", "description": "Auto-captured from Register Integration" },
+    { "key": "integration_id_token",      "value": "",                      "type": "string", "description": "Auto-captured from Get Integration Token" },
+    { "key": "integration_refresh_token", "value": "",                      "type": "string", "description": "Auto-captured from Get Integration Token" },
+    { "key": "league_id",                 "value": "",                      "type": "string", "description": "Set after listing leagues" },
+    { "key": "team_id",                   "value": "",                      "type": "string", "description": "Set after listing teams" },
+    { "key": "player_id",                 "value": "",                      "type": "string", "description": "Set after listing players" },
+    { "key": "game_id",                   "value": "",                      "type": "string", "description": "Set after listing games" }
+  ],
+  "item": [
+    {
+      "name": "1. Management",
+      "description": "Register, list, and revoke integrations. Requires your JSP user token.",
+      "item": [
+        {
+          "name": "Register Integration",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type",  "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{user_id_token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/v1/integrations", "host": ["{{base_url}}"], "path": ["v1", "integrations"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"My Test Integration\",\n  \"scopes\": [\"read:leagues\", \"read:teams\", \"read:players\", \"read:games\", \"read:stats\", \"write:games\", \"write:stats\"]\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const b = pm.response.json();",
+                  "  pm.collectionVariables.set('client_id',      b.clientId);",
+                  "  pm.collectionVariables.set('client_secret',  b.clientSecret);",
+                  "  pm.collectionVariables.set('integration_id', b.id);",
+                  "  pm.test('Registered',        () => pm.response.to.have.status(201));",
+                  "  pm.test('clientSecret present', () => pm.expect(b.clientSecret).to.be.a('string').and.not.empty);",
+                  "  console.log('client_id:', b.clientId);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Integrations",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{user_id_token}}" }],
+            "url": { "raw": "{{base_url}}/v1/integrations", "host": ["{{base_url}}"], "path": ["v1", "integrations"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('integrations array', () => pm.expect(pm.response.json().integrations).to.be.an('array'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Revoke Integration",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{user_id_token}}" }],
+            "url": { "raw": "{{base_url}}/v1/integrations/{{integration_id}}", "host": ["{{base_url}}"], "path": ["v1", "integrations", "{{integration_id}}"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) {",
+                  "  pm.collectionVariables.set('integration_id_token', '');",
+                  "  pm.collectionVariables.set('integration_refresh_token', '');",
+                  "  console.log('Revoked — tokens cleared');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. Auth",
+      "description": "Get an integration token and refresh it.",
+      "item": [
+        {
+          "name": "Get Integration Token",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/v1/integrations/token", "host": ["{{base_url}}"], "path": ["v1", "integrations", "token"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"clientId\": \"{{client_id}}\",\n  \"clientSecret\": \"{{client_secret}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) {",
+                  "  const b = pm.response.json();",
+                  "  pm.collectionVariables.set('integration_id_token',      b.idToken);",
+                  "  pm.collectionVariables.set('integration_refresh_token', b.refreshToken);",
+                  "  pm.test('idToken present',      () => pm.expect(b.idToken).to.be.a('string').and.not.empty);",
+                  "  pm.test('refreshToken present', () => pm.expect(b.refreshToken).to.be.a('string').and.not.empty);",
+                  "  pm.test('expiresIn 3600',       () => pm.expect(b.expiresIn).to.equal(3600));",
+                  "  console.log('Tokens saved');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Refresh Token",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/v1/integrations/token/refresh", "host": ["{{base_url}}"], "path": ["v1", "integrations", "token", "refresh"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{integration_refresh_token}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) {",
+                  "  const b = pm.response.json();",
+                  "  pm.collectionVariables.set('integration_id_token',      b.idToken);",
+                  "  pm.collectionVariables.set('integration_refresh_token', b.refreshToken);",
+                  "  console.log('Tokens refreshed');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. User Provisioning",
+      "description": "Provision end users. Requires integration token.",
+      "item": [
+        {
+          "name": "Provision User",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type",  "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{integration_id_token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/v1/integrations/users/provision", "host": ["{{base_url}}"], "path": ["v1", "integrations", "users", "provision"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"testuser@example.com\",\n  \"name\": \"Test User\"\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) {",
+                  "  const b = pm.response.json();",
+                  "  pm.test('idToken present',      () => pm.expect(b.idToken).to.be.a('string').and.not.empty);",
+                  "  pm.test('isNewUser is boolean', () => pm.expect(b.isNewUser).to.be.a('boolean'));",
+                  "  console.log('isNewUser:', b.isNewUser);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4. Leagues",
+      "description": "All endpoints use the integration token.",
+      "item": [
+        {
+          "name": "List My Leagues",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{integration_id_token}}" }],
+            "url": { "raw": "{{base_url}}/v1/leagues", "host": ["{{base_url}}"], "path": ["v1", "leagues"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "if (b.leagues && b.leagues.length > 0) {",
+                  "  pm.collectionVariables.set('league_id', b.leagues[0].id);",
+                  "  console.log('league_id set to', b.leagues[0].id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "List All Leagues",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{integration_id_token}}" }],
+            "url": { "raw": "{{base_url}}/v1/leagues/all", "host": ["{{base_url}}"], "path": ["v1", "leagues", "all"] }
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 200', () => pm.response.to.have.status(200));"], "type": "text/javascript" } }]
+        },
+        {
+          "name": "Get League",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{integration_id_token}}" }],
+            "url": { "raw": "{{base_url}}/v1/leagues/{{league_id}}", "host": ["{{base_url}}"], "path": ["v1", "leagues", "{{league_id}}"] }
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 200', () => pm.response.to.have.status(200));"], "type": "text/javascript" } }]
+        },
+        {
+          "name": "Get League Teams",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{integration_id_token}}" }],
+            "url": { "raw": "{{base_url}}/v1/leagues/{{league_id}}/teams", "host": ["{{base_url}}"], "path": ["v1", "leagues", "{{league_id}}", "teams"] }
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 200', () => pm.response.to.have.status(200));"], "type": "text/javascript" } }]
+        },
+        {
+          "name": "Get League Games",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{integration_id_token}}" }],
+            "url": { "raw": "{{base_url}}/v1/leagues/{{league_id}}/games", "host": ["{{base_url}}"], "path": ["v1", "leagues", "{{league_id}}", "games"] }
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 200', () => pm.response.to.have.status(200));"], "type": "text/javascript" } }]
+        },
+        {
+          "name": "Get League Players",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{integration_id_token}}" }],
+            "url": { "raw": "{{base_url}}/v1/leagues/{{league_id}}/players", "host": ["{{base_url}}"], "path": ["v1", "leagues", "{{league_id}}", "players"] }
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 200', () => pm.response.to.have.status(200));"], "type": "text/javascript" } }]
+        },
+        {
+          "name": "Get League Standings",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{integration_id_token}}" }],
+            "url": { "raw": "{{base_url}}/v1/leagues/{{league_id}}/standings", "host": ["{{base_url}}"], "path": ["v1", "leagues", "{{league_id}}", "standings"] }
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 200', () => pm.response.to.have.status(200));"], "type": "text/javascript" } }]
+        },
+        {
+          "name": "Get League Stat Leaders",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{integration_id_token}}" }],
+            "url": { "raw": "{{base_url}}/v1/leagues/{{league_id}}/stat-leaders", "host": ["{{base_url}}"], "path": ["v1", "leagues", "{{league_id}}", "stat-leaders"] }
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 200', () => pm.response.to.have.status(200));"], "type": "text/javascript" } }]
+        },
+        {
+          "name": "Search Leagues",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{integration_id_token}}" }],
+            "url": {
+              "raw": "{{base_url}}/v1/leagues/search?q=",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "leagues", "search"],
+              "query": [{ "key": "q", "value": "" }]
+            }
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 200', () => pm.response.to.have.status(200));"], "type": "text/javascript" } }]
+        }
+      ]
+    },
+    {
+      "name": "5. Teams",
+      "description": "All endpoints use the integration token.",
+      "item": [
+        {
+          "name": "List My Teams",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{integration_id_token}}" }],
+            "url": { "raw": "{{base_url}}/v1/teams", "host": ["{{base_url}}"], "path": ["v1", "teams"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "if (b.teams && b.teams.length > 0) {",
+                  "  pm.collectionVariables.set('team_id', b.teams[0].id);",
+                  "  console.log('team_id set to', b.teams[0].id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "List All Teams",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{integration_id_token}}" }],
+            "url": { "raw": "{{base_url}}/v1/teams/all", "host": ["{{base_url}}"], "path": ["v1", "teams", "all"] }
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 200', () => pm.response.to.have.status(200));"], "type": "text/javascript" } }]
+        },
+        {
+          "name": "Get Team",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{integration_id_token}}" }],
+            "url": { "raw": "{{base_url}}/v1/teams/{{team_id}}", "host": ["{{base_url}}"], "path": ["v1", "teams", "{{team_id}}"] }
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 200', () => pm.response.to.have.status(200));"], "type": "text/javascript" } }]
+        },
+        {
+          "name": "Get Team Players",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{integration_id_token}}" }],
+            "url": { "raw": "{{base_url}}/v1/teams/{{team_id}}/players", "host": ["{{base_url}}"], "path": ["v1", "teams", "{{team_id}}", "players"] }
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 200', () => pm.response.to.have.status(200));"], "type": "text/javascript" } }]
+        },
+        {
+          "name": "Search Teams",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{integration_id_token}}" }],
+            "url": {
+              "raw": "{{base_url}}/v1/teams/search?q=",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "teams", "search"],
+              "query": [{ "key": "q", "value": "" }]
+            }
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 200', () => pm.response.to.have.status(200));"], "type": "text/javascript" } }]
+        }
+      ]
+    },
+    {
+      "name": "6. Players",
+      "description": "All endpoints use the integration token.",
+      "item": [
+        {
+          "name": "List My Players",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{integration_id_token}}" }],
+            "url": { "raw": "{{base_url}}/v1/players", "host": ["{{base_url}}"], "path": ["v1", "players"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "if (b.players && b.players.length > 0) {",
+                  "  pm.collectionVariables.set('player_id', b.players[0].id);",
+                  "  console.log('player_id set to', b.players[0].id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "List All Players",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{integration_id_token}}" }],
+            "url": { "raw": "{{base_url}}/v1/players/all", "host": ["{{base_url}}"], "path": ["v1", "players", "all"] }
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 200', () => pm.response.to.have.status(200));"], "type": "text/javascript" } }]
+        },
+        {
+          "name": "Get Player",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{integration_id_token}}" }],
+            "url": { "raw": "{{base_url}}/v1/players/{{player_id}}", "host": ["{{base_url}}"], "path": ["v1", "players", "{{player_id}}"] }
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 200', () => pm.response.to.have.status(200));"], "type": "text/javascript" } }]
+        },
+        {
+          "name": "Get Player Game History",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{integration_id_token}}" }],
+            "url": { "raw": "{{base_url}}/v1/players/{{player_id}}/games", "host": ["{{base_url}}"], "path": ["v1", "players", "{{player_id}}", "games"] }
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 200', () => pm.response.to.have.status(200));"], "type": "text/javascript" } }]
+        },
+        {
+          "name": "Search Players",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{integration_id_token}}" }],
+            "url": {
+              "raw": "{{base_url}}/v1/players/search?q=",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "players", "search"],
+              "query": [{ "key": "q", "value": "" }]
+            }
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 200', () => pm.response.to.have.status(200));"], "type": "text/javascript" } }]
+        }
+      ]
+    },
+    {
+      "name": "7. Games",
+      "description": "All endpoints use the integration token.",
+      "item": [
+        {
+          "name": "List My Games",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{integration_id_token}}" }],
+            "url": { "raw": "{{base_url}}/v1/games/user", "host": ["{{base_url}}"], "path": ["v1", "games", "user"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "if (b.games && b.games.length > 0) {",
+                  "  pm.collectionVariables.set('game_id', b.games[0].id);",
+                  "  console.log('game_id set to', b.games[0].id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "List All Games",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{integration_id_token}}" }],
+            "url": { "raw": "{{base_url}}/v1/games/all", "host": ["{{base_url}}"], "path": ["v1", "games", "all"] }
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 200', () => pm.response.to.have.status(200));"], "type": "text/javascript" } }]
+        },
+        {
+          "name": "Get Game",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{integration_id_token}}" }],
+            "url": { "raw": "{{base_url}}/v1/games/{{game_id}}", "host": ["{{base_url}}"], "path": ["v1", "games", "{{game_id}}"] }
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 200', () => pm.response.to.have.status(200));"], "type": "text/javascript" } }]
+        },
+        {
+          "name": "Get Game Stats",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{integration_id_token}}" }],
+            "url": { "raw": "{{base_url}}/v1/games/{{game_id}}/stats", "host": ["{{base_url}}"], "path": ["v1", "games", "{{game_id}}", "stats"] }
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 200', () => pm.response.to.have.status(200));"], "type": "text/javascript" } }]
+        },
+        {
+          "name": "Get Game Players",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{integration_id_token}}" }],
+            "url": { "raw": "{{base_url}}/v1/games/{{game_id}}/players", "host": ["{{base_url}}"], "path": ["v1", "games", "{{game_id}}", "players"] }
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 200', () => pm.response.to.have.status(200));"], "type": "text/javascript" } }]
+        },
+        {
+          "name": "Get Active Games",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{integration_id_token}}" }],
+            "url": { "raw": "{{base_url}}/v1/games/active", "host": ["{{base_url}}"], "path": ["v1", "games", "active"] }
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 200', () => pm.response.to.have.status(200));"], "type": "text/javascript" } }]
+        },
+        {
+          "name": "Search Games",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{integration_id_token}}" }],
+            "url": {
+              "raw": "{{base_url}}/v1/games/search?q=",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "games", "search"],
+              "query": [{ "key": "q", "value": "" }]
+            }
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 200', () => pm.response.to.have.status(200));"], "type": "text/javascript" } }]
+        }
+      ]
+    }
+  ]
+}
