@@ -40,8 +40,8 @@ Content-Type: application/json
 ```json
 {
   "id": "550e8400-e29b-41d4-a716-446655440000",
-  "clientId": "REPLACE_WITH_CLIENT_ID",
-  "clientSecret": "REPLACE_WITH_CLIENT_SECRET",
+  "clientId": "YOUR_CLIENT_ID",
+  "clientSecret": "YOUR_CLIENT_SECRET",
   "name": "My App",
   "scopes": ["read:leagues", "read:stats", "write:stats"],
   "active": true,
@@ -62,15 +62,15 @@ POST /v1/integrations/token
 Content-Type: application/json
 
 {
-  "clientId": "int_a1b2c3d4e5f6a7b8",
-  "clientSecret": "REPLACE_WITH_CLIENT_SECRET"
+  "clientId": "YOUR_CLIENT_ID",
+  "clientSecret": "YOUR_CLIENT_SECRET"
 }
 ```
 
 **Response `200`:**
 ```json
 {
-	"idToken": "YOUR_ID_TOKEN",
+  "idToken": "YOUR_ID_TOKEN",
   "refreshToken": "YOUR_REFRESH_TOKEN",
   "expiresIn": 3600
 }
@@ -82,27 +82,27 @@ Store both tokens. The `idToken` is valid for **1 hour**. The `refreshToken` doe
 
 ## Step 3 — Refresh the Integration Token
 
-When the `idToken` expires, refresh it server-side with a direct POST to Firebase (no SDK):
+When the `idToken` expires, refresh it through JSP:
 
-```bash
-POST https://securetoken.googleapis.com/v1/token?key={FIREBASE_WEB_API_KEY}
-Content-Type: application/x-www-form-urlencoded
+```http
+POST /v1/integrations/token/refresh
+Content-Type: application/json
 
-grant_type=refresh_token&refresh_token={refreshToken}
-```
-
-**Response:**
-```json
 {
-  "id_token": "YOUR_ID_TOKEN",
-  "refresh_token": "YOUR_REFRESH_TOKEN",
-  "expires_in": "3600"
+  "refreshToken": "YOUR_REFRESH_TOKEN"
 }
 ```
 
-> The `refresh_token` rotates — always store the new value.
+**Response `200`:**
+```json
+{
+  "idToken": "YOUR_ID_TOKEN",
+  "refreshToken": "YOUR_REFRESH_TOKEN",
+  "expiresIn": 3600
+}
+```
 
-The `FIREBASE_WEB_API_KEY` for Jump Stop Pivot will be provided by the JSP team on request.
+> The `refreshToken` rotates — always store the new value returned in the response.
 
 ---
 
@@ -153,16 +153,18 @@ Pass `idToken` to your frontend. Your frontend uses it directly as a Bearer toke
 
 ## Step 6 — Refresh User Tokens
 
-Refresh user tokens the same way as the integration token — a direct POST to Firebase from your backend:
+Refresh user tokens the same way — through the JSP proxy:
 
-```bash
-POST https://securetoken.googleapis.com/v1/token?key={FIREBASE_WEB_API_KEY}
-Content-Type: application/x-www-form-urlencoded
+```http
+POST /v1/integrations/token/refresh
+Content-Type: application/json
 
-grant_type=refresh_token&refresh_token={user-refreshToken}
+{
+  "refreshToken": "YOUR_REFRESH_TOKEN"
+}
 ```
 
-Pass the new `id_token` to your frontend when needed.
+Pass the new `idToken` to your frontend when needed.
 
 ---
 
@@ -181,7 +183,7 @@ Your backend                    JSP API                  Your frontend
                                                  Bearer idToken on JSP calls
 
 3. When idToken expires:
-   Your backend ─► POST securetoken.googleapis.com (refreshToken)
+   Your backend ─► POST /v1/integrations/token/refresh (refreshToken)
                     └─► new idToken ──────────────────────────────────►
 ```
 
@@ -226,6 +228,7 @@ Revocation disables the integration's Firebase identity immediately. Any `idToke
 | `GET` | `/v1/integrations` | User Bearer token | List your integrations |
 | `DELETE` | `/v1/integrations/{id}` | User Bearer token | Revoke an integration |
 | `POST` | `/v1/integrations/token` | None — clientId + clientSecret | Exchange credentials for tokens |
+| `POST` | `/v1/integrations/token/refresh` | None — refreshToken in body | Refresh an idToken (integration or user) |
 | `POST` | `/v1/integrations/users/provision` | Integration Bearer token | Provision an end user |
 
 ---
