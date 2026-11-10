@@ -1,6 +1,6 @@
 # Plan: Public site (`ui/`) reads Postgres directly instead of the Go API
 
-> Status: **implemented, not deployed.** Written 2026-11-08, implemented 2026-11-09. All decisions (D1–D5) are made; see [Decisions](#decisions).
+> Status: **implemented, not deployed.** Written 2026-11-08, implemented 2026-11-09; role setup updated for pgAdmin 2026-11-10. All decisions (D1–D5) are made; see [Decisions](#decisions).
 > What was built, what changed on the way, and what's left: [Implementation notes](#implementation-notes).
 >
 > Scope: **read-only, `ui/` only.** The Next.js site will only run `SELECT`s. Any future
@@ -397,32 +397,51 @@ safety poll. Pages still render, because they don't need Redis.
 
 ### Read-only role (enforced by Postgres, not by convention)
 
-The role is **created by hand** once per environment with the script below. It is not a
-migration, so the API's migration user doesn't need `CREATEROLE` and nothing about the
-role lives in `api/migrations/`.
+The role is **created by hand** once per environment, by an admin, in four steps: run the
+script, set the password, check the role, and put the connection URL in Coolify. It is not a
+migration, so the API's migration user doesn't need `CREATEROLE` and nothing about the role
+lives in `api/migrations/`.
 
-#### Script: create `jsp_public_read`
+The steps below use **pgAdmin**, which is how production is done. The same works in any GUI
+query tool (DBeaver, TablePlus, ...); psql commands are given as an alternative.
 
-The script is also saved as [`docs/sql/create_public_read_user.sql`](sql/create_public_read_user.sql).
-It's plain SQL, so it runs in psql or in a GUI query tool (pgAdmin, DBeaver, ...). Run it as a
-superuser or as the owner of the tables (the role the API's migrations run as), connected to
-the app database. With psql, from the repo root:
+#### Before you start: connect as admin
+
+You need a connection to the **app database** (not `postgres`) as a user that can create roles
+and owns the tables: the Postgres superuser, or the user the API connects with
+(`DATABASE_URL` in the API's Coolify settings, which is also the user the migrations run as).
+
+- **Coolify:** the admin user and password are in the Postgres resource's settings
+  (`POSTGRES_USER` / `POSTGRES_PASSWORD`, or the connection URL shown there). The database is
+  usually not exposed publicly, so connect through an SSH tunnel to the server or from a
+  machine on the same network.
+- **Local Docker:** host `localhost`, port `5433`, database and user from `.env`
+  (`POSTGRES_DB` / `POSTGRES_USER` / `POSTGRES_PASSWORD`, default `basketball`).
+
+In pgAdmin: *Register → Server*, fill in host, port, maintenance database (the app database),
+username and password, then *Save*.
+
+#### Step 1: run the script
+
+The script is saved as [`docs/sql/create_public_read_user.sql`](sql/create_public_read_user.sql)
+and copied below. It's plain SQL (no psql `\` commands), so it runs in a GUI query tool as is.
+
+**pgAdmin:**
+1. In the Object Explorer, select the **app database**, then *Tools → Query Tool*.
+2. Paste the whole script.
+3. Run it as a whole with *Execute script* (F5), not one statement at a time.
+4. The *Messages* tab should end with `COMMIT` and no errors.
+
+**psql (alternative),** from the repo root:
 
 ```sh
 psql "postgres://<admin_user>@<host>:5432/<db>" -f docs/sql/create_public_read_user.sql
-```
-
-For the local Docker database (`docker-compose.yml` exposes Postgres on port 5433):
-
-```sh
+# local Docker:
 psql "postgres://basketball@localhost:5433/basketball" -f docs/sql/create_public_read_user.sql
 ```
 
-In pgAdmin: open the Query Tool on the app database, paste the script, and run it as a whole
-(F5), not one statement at a time.
-
-The script runs in one transaction, so if any statement fails nothing is changed. It creates
-the role **without a password**; set one in the next step.
+The script runs in one transaction: if any statement fails, nothing is changed, and you can fix
+the cause and run it again. It creates the role **without a password**, so it can't log in yet.
 
 ```sql
 BEGIN;
@@ -470,34 +489,61 @@ Notes:
   adds a table the site must read, add a `GRANT SELECT` for it and run that line by hand.
   New tables are **not** readable by default, on purpose.
 - The database name differs per environment, so the `GRANT CONNECT` uses `current_database()`.
+- `permission denied` or `must have CREATEROLE`: you're not connected as an admin (see above).
+  `relation "public.league" does not exist`: you're connected to the wrong database, or the
+  API's migrations haven't run there yet.
 
-#### Set the password
+#### Step 2: set the password (as admin)
 
-The role can't log in until it has a password. The password goes into a connection URL, so it
-must be URL-safe (letters and digits only), or it has to be percent-encoded in
-`DATABASE_URL_READONLY`.
+Generate a long random password made of letters and digits only. It goes into a connection URL,
+so other characters would have to be percent-encoded in `DATABASE_URL_READONLY`. Don't save it
+in this repo, a ticket or chat: it's stored only in Coolify (D3).
 
-- **psql (preferred):** connect as admin and run
+**pgAdmin:**
+1. In the Object Explorer, refresh the server, then open *Login/Group Roles*.
+2. Right-click `jsp_public_read` → *Properties*.
+3. *Definition* tab → paste the password into *Password*. Leave *Account expires* empty and
+   *Connection limit* at `15` (the script set it).
+4. *Save*.
 
-  ```
-  \password jsp_public_read
-  ```
+Don't set it by typing `ALTER ROLE jsp_public_read PASSWORD '...'` in the Query Tool: pgAdmin
+keeps a query history, so the password would be stored there.
 
-  psql asks for it twice and hashes it before sending it, so the plain password never appears
-  in a file, in shell history or in the Postgres logs.
-- **pgAdmin:** Object Explorer → *Login/Group Roles* → `jsp_public_read` → *Properties* →
-  *Definition* → *Password* → *Save*. pgAdmin sends the password in an `ALTER ROLE` statement,
-  so it can show up in the Postgres logs if statement logging (`log_statement = ddl` or `all`)
-  is on. Don't type `ALTER ROLE ... PASSWORD '...'` in the Query Tool either: that also ends up
-  in pgAdmin's query history.
+pgAdmin's *Properties* dialog also sends an `ALTER ROLE ... PASSWORD` statement to the server.
+Postgres hashes it before storing it, but the statement can be written to the Postgres log if
+statement logging is on. Before saving, run `SHOW log_statement;` in the Query Tool: `none` or
+`mod` is fine. If it's `ddl` or `all`, use psql's `\password` instead (below), which hashes the
+password before sending it.
 
-#### Check it worked
+**psql (alternative):** connect as admin and run
 
-Connect as the new user (psql asks for the password):
-
-```sh
-psql "postgres://jsp_public_read@<host>:5432/<db>"
 ```
+\password jsp_public_read
+```
+
+psql asks for the password twice and sends only the hash, so the plain password never appears
+in a file, in shell history or in the Postgres logs.
+
+**Check the password is set** (as admin, in the Query Tool):
+
+```sql
+SELECT rolname, rolcanlogin, rolconnlimit, rolpassword IS NOT NULL AS has_password
+FROM pg_authid WHERE rolname = 'jsp_public_read';
+```
+
+Expected: `rolcanlogin = true`, `rolconnlimit = 15`, `has_password = true`.
+
+#### Step 3: check the role works
+
+Log in **as `jsp_public_read`**, not as admin. The role's settings (read-only, timeouts) only
+apply to its own logins, so `SET ROLE` from an admin session doesn't test them.
+
+- **pgAdmin:** in the Query Tool, open the connection dropdown in the toolbar →
+  *&lt;New Connection...&gt;* → same server and database, user `jsp_public_read`, and the
+  password from step 2. (Or register a second server with that user.)
+- **psql:** `psql "postgres://jsp_public_read@<host>:5432/<db>"` (it asks for the password).
+
+Run:
 
 ```sql
 SELECT current_user,
@@ -508,11 +554,14 @@ SELECT count(*) FROM app_user;
 UPDATE game SET name = name WHERE false;
 ```
 
-Expected: `read_only = on`, `stmt_timeout = 5s`, the `game` count works, `app_user` fails
-with `permission denied`, and the `UPDATE` fails (`cannot execute UPDATE in a read-only
-transaction` or `permission denied`).
+Run the last two one at a time (in pgAdmin, select a line and press F5), because each is
+expected to fail.
 
-#### Connect `ui/` (D3)
+Expected: `current_user = jsp_public_read`, `read_only = on`, `stmt_timeout = 5s`, the `game`
+count works, `app_user` fails with `permission denied`, and the `UPDATE` fails
+(`cannot execute UPDATE in a read-only transaction` or `permission denied`).
+
+#### Step 4: connect `ui/` (D3)
 
 Put the password only in the `ui` app's environment variables in Coolify:
 
@@ -520,14 +569,17 @@ Put the password only in the `ui` app's environment variables in Coolify:
 DATABASE_URL_READONLY=postgres://jsp_public_read:<password>@<host>:5432/<db>?sslmode=<mode>
 ```
 
-It's a server-only variable (no `NEXT_PUBLIC_` prefix), so it never reaches the browser.
-`<host>` is the Postgres service name on the Coolify network, not a public address.
+- It's a server-only variable (no `NEXT_PUBLIC_` prefix), so it never reaches the browser.
+- Runtime only: don't tick "Build Variable", so the password isn't baked into the image.
+- `<host>` is the Postgres service name on the Coolify network, not a public address.
+- Redeploy `ui/` after saving it.
 
 #### Rotate the password or remove the user
 
-- **Rotate:** as admin, set a new password (see "Set the password"), update the Coolify
-  variable, and redeploy `ui/`.
-- **Remove** (as admin):
+- **Rotate:** as admin, set a new password (step 2), update `DATABASE_URL_READONLY` in
+  Coolify, and redeploy `ui/`. Existing connections stay open until they're recycled (at most
+  5 minutes, the pool's connection lifetime); new ones use the new password.
+- **Remove** (as admin, in the Query Tool, connected to the app database):
 
   ```sql
   REVOKE SELECT ON ALL TABLES IN SCHEMA public FROM jsp_public_read;
@@ -588,9 +640,9 @@ Postgres. Mitigations, in order of value:
 
 - The `ui` container must join the network Postgres is on (`coolify_net` locally).
   Postgres must not be exposed publicly for this.
-- New env var in the `ui` app's Coolify settings: `DATABASE_URL_READONLY` (see D3 above).
-  Runtime only: don't tick "Build Variable", so the password isn't baked into the image. The
-  build doesn't need the database.
+- New env var in the `ui` app's Coolify settings: `DATABASE_URL_READONLY` (see
+  [Step 4: connect `ui/`](#step-4-connect-ui-d3)). Runtime only: don't tick "Build Variable", so
+  the password isn't baked into the image. The build doesn't need the database.
 - Local dev: `docker-compose.yml`'s `ui` service builds `DATABASE_URL_READONLY` from
   `PUBLIC_READ_DB_PASSWORD` in `.env`.
 - Optional: `DB_POOL_MAX` (default 10) for the `ui` pool, `DB_MAX_CONNS` (default 60) for the API.
@@ -624,8 +676,8 @@ production as one `ui` deploy.
 
 ### Phase 1: Database prep (done first) — **code done; role and env to do**
 - Lower the API's `MaxConns` (or make it configurable) and deploy the API.
-- Create `jsp_public_read` by hand with the [script](#script-create-jsp_public_read) in each
-  environment (local, production), and run the checks.
+- Create `jsp_public_read` by hand in each environment (local, production), following
+  [Read-only role](#read-only-role-enforced-by-postgres-not-by-convention) steps 1–3.
 - Add `DATABASE_URL_READONLY` to the `ui` app in Coolify (D3). Nothing uses it yet.
 
 ### Phase 2: UI data layer — **done**
@@ -723,8 +775,10 @@ Implemented 2026-11-09. Nothing is committed or deployed.
   can't write or read `app_user`/`game_sharing`. Needs `TEST_DATABASE_ADMIN_URL` (an admin
   that can create a database and a role). It creates and drops its own database and a
   randomly named role, so it never touches `jsp_public_read`.
-- The docs script itself, run with `psql -f` twice (idempotent, password prompt works), and
-  the "Check it worked" queries.
+- The docs script itself (plain SQL since 2026-11-10, so it runs in pgAdmin): sent as one
+  multi-statement query, the way a GUI query tool sends it (`pnpm test:db`), and with `psql -f`
+  twice (idempotent; the role came out with the settings above and 9 table grants). The
+  "Check it worked" queries (now step 3) were checked earlier.
 - `pnpm build` with no database env, then `pnpm start` against the test database: every page,
   OG image and share image returned 200 with data; unknown/invalid ids 404; draft pages
   `noindex`; SSE sent `sync`/`stats`/`coach`/`status` to two viewers over **one** Redis

@@ -6,8 +6,8 @@
 --   psql "postgres://<admin_user>@<host>:5432/<db>" -f docs/sql/create_public_read_user.sql
 --
 -- It runs in one transaction: if any statement fails, nothing is changed.
--- It does not set a password. Set it afterwards (see the plan doc, "Set the password"),
--- so the password never appears in this file.
+-- It does not set a password. Set it afterwards as admin (plan doc, "Read-only role",
+-- step 2: pgAdmin role Properties or psql \password), so it never appears in this file.
 
 BEGIN;
 
